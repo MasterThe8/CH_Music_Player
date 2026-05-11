@@ -1,0 +1,751 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Lumina Music Player — Dark Blue Elegant Theme
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Palette ─────────────────────────────────────────────────────────────────
+   bg-deep:      #060e1e    (darkest background)
+   bg-base:      #091428    (panel backgrounds)
+   bg-surface:   #0d1e3a    (cards, rows)
+   bg-elevated:  #112347    (hover states)
+   bg-border:    #1a3050    (dividers, borders)
+   accent:       #3b82f6    (primary blue accent)
+   accent-glow:  #2563eb    (deeper accent)
+   text-primary: #e8edf7    (main text)
+   text-muted:   #8899bb    (secondary text)
+   text-dim:     #4a608a    (tertiary/disabled)
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── Global Reset ──────────────────────────────────────────────────────────── */
+* {
+    font-family: "Segoe UI", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    color: #e8edf7;
+    outline: none;
+    border: none;
+}
+
+QMainWindow, QWidget {
+    background-color: #060e1e;
+}
+
+#centralWidget {
+    background-color: #060e1e;
+}
+
+#contentArea {
+    background-color: #060e1e;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────────────────── */
+QScrollBar:vertical {
+    background: transparent;
+    width: 6px;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background: #1a3050;
+    border-radius: 3px;
+    min-height: 30px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #3b82f6;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+QScrollBar:horizontal {
+    background: transparent;
+    height: 6px;
+}
+QScrollBar::handle:horizontal {
+    background: #1a3050;
+    border-radius: 3px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: #3b82f6;
+}
+
+/* ── Dividers ──────────────────────────────────────────────────────────────── */
+#panelDivider {
+    color: #0f2040;
+    background: #0f2040;
+    max-height: 1px;
+}
+
+#accentLine {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 transparent, stop:0.3 #1a3a6b, stop:0.7 #1a3a6b, stop:1 transparent);
+    max-height: 1px;
+}
+
+#playerAccentLine {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 transparent, stop:0.2 #3b82f6, stop:0.8 #3b82f6, stop:1 transparent);
+    max-height: 1px;
+}
+
+/* ── Left Panel ────────────────────────────────────────────────────────────── */
+#playlistPanel {
+    background-color: #08111f;
+    border-right: 1px solid #0f2040;
+}
+
+#panelHeader {
+    background-color: #08111f;
+}
+
+#logoIcon {
+    font-size: 22px;
+    color: #3b82f6;
+}
+
+#appName {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #e8edf7;
+}
+
+#panelTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e8edf7;
+    letter-spacing: 0.5px;
+}
+
+#sectionHeader {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #4a608a;
+    padding: 4px 0;
+}
+
+/* Nav items */
+#navItem {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    text-align: left;
+    padding: 0;
+    margin: 1px 8px;
+}
+#navItem:hover {
+    background: #0d1e3a;
+}
+#navItem:checked {
+    background: #112347;
+}
+#navIcon {
+    font-size: 15px;
+    color: #4a608a;
+}
+#navText {
+    font-size: 13px;
+    color: #8899bb;
+}
+#navItem:checked #navText,
+#navItem:checked #navIcon {
+    color: #3b82f6;
+}
+#navItem:hover #navText {
+    color: #c8d8f0;
+}
+
+/* Playlist items */
+#playlistScroll, #playlistContainer {
+    background: transparent;
+}
+#playlistItem {
+    background: transparent;
+    border-radius: 8px;
+    margin: 1px 6px;
+}
+#playlistItem:hover {
+    background: #0d1e3a;
+}
+#playlistItem[selected="true"] {
+    background: #112347;
+    border-left: 2px solid #3b82f6;
+}
+#playlistCover {
+    background: #0d2145;
+    border-radius: 6px;
+    font-size: 18px;
+    color: #3b82f6;
+}
+#playlistName {
+    font-size: 13px;
+    font-weight: 600;
+    color: #c8d8f0;
+}
+#playlistCount {
+    font-size: 11px;
+    color: #4a608a;
+}
+
+#addPlaylistBtn {
+    background: #112347;
+    border: 1px solid #1a3050;
+    border-radius: 6px;
+    color: #3b82f6;
+    font-size: 16px;
+    font-weight: 600;
+}
+#addPlaylistBtn:hover {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+/* Panel toggle buttons */
+#panelToggleBtn {
+    background: #0a1626;
+    border: none;
+    color: #2a4570;
+    font-size: 11px;
+}
+#panelToggleBtn:hover {
+    background: #0d1e3a;
+    color: #3b82f6;
+}
+
+/* Panel bottom */
+#panelBottom {
+    background: #08111f;
+}
+#settingsBtn {
+    background: transparent;
+    border: 1px solid #1a3050;
+    border-radius: 6px;
+    padding: 6px 14px;
+    color: #8899bb;
+    font-size: 12px;
+}
+#settingsBtn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+/* ── Main Panel ────────────────────────────────────────────────────────────── */
+#mainPanel {
+    background-color: #060e1e;
+}
+
+#mainTopBar {
+    background: #080f1d;
+    border-bottom: 1px solid #0f2040;
+}
+
+#mainTitle {
+    font-size: 22px;
+    font-weight: 700;
+    color: #e8edf7;
+    letter-spacing: -0.3px;
+}
+
+#mainSubtitle {
+    font-size: 12px;
+    color: #4a608a;
+}
+
+#searchBox {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 20px;
+    padding: 6px 14px;
+    color: #e8edf7;
+    font-size: 13px;
+}
+#searchBox:focus {
+    border-color: #3b82f6;
+    background: #112347;
+}
+#searchBox::placeholder {
+    color: #4a608a;
+}
+
+#viewToggleBtn {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 8px;
+    padding: 6px 14px;
+    color: #8899bb;
+}
+#viewToggleBtn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+#viewToggleBtn:checked {
+    background: #1a3a6b;
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+#addFolderBtn {
+    background: transparent;
+    border: 1px solid #1a3050;
+    border-radius: 8px;
+    padding: 6px 14px;
+    color: #8899bb;
+}
+#addFolderBtn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+#playAllBtn {
+    background: #3b82f6;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 16px;
+    color: #ffffff;
+    font-weight: 600;
+}
+#playAllBtn:hover {
+    background: #2563eb;
+}
+#playAllBtn:pressed {
+    background: #1d4ed8;
+}
+
+/* Song Table */
+#songTable {
+    background: transparent;
+    gridline-color: transparent;
+    border: none;
+    selection-background-color: #112347;
+}
+#songTable::item {
+    padding: 0 8px;
+    border-bottom: 1px solid #0a1626;
+    color: #c8d8f0;
+}
+#songTable::item:selected {
+    background: #112347;
+    color: #e8edf7;
+}
+#songTable::item:hover {
+    background: #0d1e3a;
+}
+#tableHeader {
+    background: #080f1d;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #4a608a;
+    text-transform: uppercase;
+    border-bottom: 1px solid #0f2040;
+}
+#tableHeader::section {
+    background: #080f1d;
+    color: #4a608a;
+    padding: 10px 8px;
+    border: none;
+    border-bottom: 1px solid #0f2040;
+}
+#tableHeader::section:hover {
+    color: #3b82f6;
+}
+
+/* ── Lyrics View ───────────────────────────────────────────────────────────── */
+#lyricsView {
+    background: #060e1e;
+}
+
+#lyricsScroll {
+    background: transparent;
+}
+
+#lyricsSongTitle {
+    font-size: 26px;
+    font-weight: 700;
+    color: #e8edf7;
+    letter-spacing: -0.3px;
+}
+
+#lyricsSongArtist {
+    font-size: 15px;
+    color: #8899bb;
+}
+
+#lyricsText {
+    font-size: 16px;
+    line-height: 1.8;
+    color: #c8d8f0;
+    padding: 20px;
+    background: transparent;
+}
+
+#editLyricsBtn {
+    background: transparent;
+    border: 1px solid #1a3050;
+    border-radius: 8px;
+    padding: 8px 18px;
+    color: #8899bb;
+}
+#editLyricsBtn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+/* Lyrics dialog */
+#lyricsDialog {
+    background: #091428;
+}
+#lyricsEditor {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 8px;
+    padding: 12px;
+    color: #e8edf7;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* ── Right Panel ───────────────────────────────────────────────────────────── */
+#nowPlayingPanel {
+    background: #08111f;
+    border-left: 1px solid #0f2040;
+}
+
+#nowPlayingInfo {
+    background: transparent;
+}
+
+#coverArt {
+    background: #0d2145;
+    border-radius: 16px;
+}
+
+#npSongTitle {
+    font-size: 16px;
+    font-weight: 700;
+    color: #e8edf7;
+}
+
+#npSongArtist {
+    font-size: 13px;
+    color: #8899bb;
+}
+
+#npSongAlbum {
+    font-size: 11px;
+    color: #4a608a;
+}
+
+#npStat {
+    font-size: 11px;
+    color: #4a608a;
+}
+
+#favBtn {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 18px;
+    font-size: 16px;
+    color: #4a608a;
+}
+#favBtn:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+}
+#favBtn:checked {
+    background: #2d1a1a;
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+/* Queue */
+#queueScroll, #queueContainer {
+    background: transparent;
+}
+#queueCount {
+    font-size: 11px;
+    color: #4a608a;
+}
+#queueItem {
+    background: transparent;
+    border-bottom: 1px solid #0a1626;
+}
+#queueItem:hover {
+    background: #0d1e3a;
+}
+#queueItemIndex {
+    font-size: 12px;
+    color: #4a608a;
+}
+#queueItemCurrent {
+    font-size: 11px;
+    color: #3b82f6;
+}
+#queueItemTitle {
+    font-size: 13px;
+    font-weight: 500;
+    color: #c8d8f0;
+}
+#queueItemTitleActive {
+    font-size: 13px;
+    font-weight: 600;
+    color: #3b82f6;
+}
+#queueItemArtist {
+    font-size: 11px;
+    color: #4a608a;
+}
+#queueItemDuration {
+    font-size: 11px;
+    color: #4a608a;
+}
+
+/* ── Player Bar ────────────────────────────────────────────────────────────── */
+#playerBar {
+    background: #06101f;
+    border-top: 1px solid #0f2040;
+}
+
+#playerBarInner {
+    background: transparent;
+}
+
+#miniCover {
+    background: #0d2145;
+    border-radius: 10px;
+    font-size: 22px;
+    color: #3b82f6;
+}
+
+#playerSongTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e8edf7;
+}
+
+#playerSongArtist {
+    font-size: 11px;
+    color: #8899bb;
+}
+
+/* Control buttons */
+#controlBtn {
+    background: transparent;
+    border-radius: 15px;
+    color: #8899bb;
+    font-size: 16px;
+}
+#controlBtn:hover {
+    background: #0d1e3a;
+    color: #e8edf7;
+}
+#controlBtn:checked {
+    color: #3b82f6;
+}
+
+/* Main play button */
+#playBtn {
+    background: #3b82f6;
+    border-radius: 26px;
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 600;
+}
+#playBtn:hover {
+    background: #2563eb;
+}
+#playBtn:pressed {
+    background: #1d4ed8;
+}
+#playBtnActive {
+    background: #3b82f6;
+    border-radius: 26px;
+    color: #ffffff;
+    font-size: 18px;
+}
+#playBtnActive:hover {
+    background: #2563eb;
+}
+
+/* Progress / Volume sliders */
+#progressSlider, #volumeSlider {
+    background: transparent;
+    height: 4px;
+}
+#progressSlider::groove:horizontal {
+    background: #112347;
+    height: 4px;
+    border-radius: 2px;
+}
+#progressSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #2563eb, stop:1 #3b82f6);
+    border-radius: 2px;
+}
+#progressSlider::handle:horizontal {
+    background: #ffffff;
+    width: 12px;
+    height: 12px;
+    margin: -4px 0;
+    border-radius: 6px;
+}
+#progressSlider::handle:horizontal:hover {
+    background: #3b82f6;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+}
+
+#volumeSlider::groove:horizontal {
+    background: #112347;
+    height: 4px;
+    border-radius: 2px;
+}
+#volumeSlider::sub-page:horizontal {
+    background: #3b82f6;
+    border-radius: 2px;
+}
+#volumeSlider::handle:horizontal {
+    background: #ffffff;
+    width: 10px;
+    height: 10px;
+    margin: -3px 0;
+    border-radius: 5px;
+}
+
+/* Time labels */
+#timeLabel {
+    font-size: 11px;
+    font-family: "Consolas", "SF Mono", monospace;
+    color: #4a608a;
+}
+
+#volIcon {
+    font-size: 14px;
+}
+
+#lyricsToggleBtn {
+    background: transparent;
+    border-radius: 15px;
+    color: #8899bb;
+    font-size: 16px;
+}
+#lyricsToggleBtn:hover {
+    background: #0d1e3a;
+    color: #e8edf7;
+}
+#lyricsToggleBtn:checked {
+    color: #3b82f6;
+}
+
+/* ── Context Menu ──────────────────────────────────────────────────────────── */
+QMenu {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 10px;
+    padding: 6px;
+}
+QMenu::item {
+    padding: 8px 16px;
+    border-radius: 6px;
+    color: #c8d8f0;
+}
+QMenu::item:selected {
+    background: #112347;
+    color: #3b82f6;
+}
+QMenu::separator {
+    height: 1px;
+    background: #1a3050;
+    margin: 4px 8px;
+}
+
+/* ── Status Bar ────────────────────────────────────────────────────────────── */
+#statusBar {
+    background: #04090f;
+    border-top: 1px solid #0a1626;
+    font-size: 11px;
+    color: #4a608a;
+}
+
+#scanProgress {
+    background: #0d1e3a;
+    border: none;
+    border-radius: 4px;
+    height: 6px;
+}
+#scanProgress::chunk {
+    background: #3b82f6;
+    border-radius: 4px;
+}
+
+/* ── Input Dialog / QDialog ────────────────────────────────────────────────── */
+QDialog {
+    background: #091428;
+    border: 1px solid #1a3050;
+    border-radius: 12px;
+}
+
+QInputDialog {
+    background: #091428;
+}
+
+QInputDialog QLabel {
+    color: #e8edf7;
+    font-size: 13px;
+}
+
+QInputDialog QLineEdit {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #e8edf7;
+}
+
+QInputDialog QLineEdit:focus {
+    border-color: #3b82f6;
+}
+
+QDialogButtonBox QPushButton {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 8px;
+    padding: 7px 18px;
+    color: #c8d8f0;
+    min-width: 80px;
+}
+
+QDialogButtonBox QPushButton:hover {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+QMessageBox {
+    background: #091428;
+}
+QMessageBox QLabel {
+    color: #e8edf7;
+}
+QMessageBox QPushButton {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 8px;
+    padding: 7px 20px;
+    color: #c8d8f0;
+    min-width: 80px;
+}
+QMessageBox QPushButton:hover {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+/* ── Tooltip ───────────────────────────────────────────────────────────────── */
+QToolTip {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 6px;
+    padding: 4px 8px;
+    color: #e8edf7;
+    font-size: 12px;
+}
