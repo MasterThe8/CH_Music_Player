@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual Environment
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Build
+build/
+dist/
+
+# Logs
+*.log
+
+# Database
+*.db
+
+# Output
+output/
+
+# Backup
+*.zip

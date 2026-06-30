@@ -38,21 +38,29 @@ QMainWindow, QWidget {
 
 /* ── Scrollbars ────────────────────────────────────────────────────────────── */
 QScrollBar:vertical {
-    background: transparent;
+    background: #000000;
     width: 6px;
     margin: 0;
 }
+
 QScrollBar::handle:vertical {
     background: #1a3050;
     border-radius: 3px;
     min-height: 30px;
 }
+
 QScrollBar::handle:vertical:hover {
     background: #3b82f6;
 }
+
 QScrollBar::add-line:vertical,
 QScrollBar::sub-line:vertical {
     height: 0;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: #000000;
 }
 QScrollBar:horizontal {
     background: transparent;
@@ -140,10 +148,12 @@ QScrollBar::handle:horizontal:hover {
 #navIcon {
     font-size: 15px;
     color: #4a608a;
+    background: transparent;
 }
 #navText {
     font-size: 13px;
     color: #8899bb;
+    background: transparent;
 }
 #navItem:checked #navText,
 #navItem:checked #navIcon {
@@ -249,6 +259,54 @@ QScrollBar::handle:horizontal:hover {
     color: #4a608a;
 }
 
+/* ── Sort Bar ──────────────────────────────────────────────────────────────── */
+#sortBar {
+    background: #080f1d;
+    border-bottom: 1px solid #0f2040;
+}
+
+#sortLabel {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: #4a608a;
+}
+
+#sortFieldBtn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    padding: 4px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #8899bb;
+}
+#sortFieldBtn:hover {
+    background: #0d1e3a;
+    border-color: #1a3050;
+    color: #c8d8f0;
+}
+#sortFieldBtn:checked {
+    background: #112347;
+    border-color: #3b82f6;
+    color: #3b82f6;
+    font-weight: 600;
+}
+
+#sortOrderBtn {
+    background: #0d1e3a;
+    border: 1px solid #1a3050;
+    border-radius: 14px;
+    padding: 4px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #8899bb;
+}
+#sortOrderBtn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
 #searchBox {
     background: #0d1e3a;
     border: 1px solid #1a3050;
@@ -265,21 +323,26 @@ QScrollBar::handle:horizontal:hover {
     color: #4a608a;
 }
 
-#viewToggleBtn {
+#viewToggleBtn, #stemsMixerBtn {
     background: #0d1e3a;
     border: 1px solid #1a3050;
     border-radius: 8px;
     padding: 6px 14px;
     color: #8899bb;
 }
-#viewToggleBtn:hover {
+#viewToggleBtn:hover, #stemsMixerBtn:hover {
     border-color: #3b82f6;
     color: #3b82f6;
 }
-#viewToggleBtn:checked {
+#viewToggleBtn:checked, #stemsMixerBtn:checked {
     background: #1a3a6b;
     border-color: #3b82f6;
     color: #3b82f6;
+}
+#stemsMixerBtn:disabled {
+    background: transparent;
+    border-color: #0f2040;
+    color: #4a608a;
 }
 
 #addFolderBtn {
@@ -290,6 +353,17 @@ QScrollBar::handle:horizontal:hover {
     color: #8899bb;
 }
 #addFolderBtn:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+#openDatabaseBtn {
+    background: transparent;
+    border: 1px solid #1a3050;
+    border-radius: 8px;
+    padding: 6px 14px;
+    color: #8899bb;
+}
+#openDatabaseBtn:hover {
     border-color: #3b82f6;
     color: #3b82f6;
 }
@@ -325,9 +399,7 @@ QScrollBar::handle:horizontal:hover {
     background: #112347;
     color: #e8edf7;
 }
-#songTable::item:hover {
-    background: #0d1e3a;
-}
+
 #tableHeader {
     background: #080f1d;
     font-size: 11px;
@@ -357,17 +429,7 @@ QScrollBar::handle:horizontal:hover {
     background: transparent;
 }
 
-#lyricsSongTitle {
-    font-size: 26px;
-    font-weight: 700;
-    color: #e8edf7;
-    letter-spacing: -0.3px;
-}
 
-#lyricsSongArtist {
-    font-size: 15px;
-    color: #8899bb;
-}
 
 #lyricsText {
     font-size: 16px;
@@ -541,81 +603,95 @@ QScrollBar::handle:horizontal:hover {
     color: #3b82f6;
 }
 
+#tableCellTitle {
+    color: #e8eefc;
+    font-size: 14px;
+    font-weight: 600;
+    background: transparent;
+}
+
+#tableCellMuted {
+    color: #8fa3c7;
+    font-size: 13px;
+    font-weight: 500;
+    background: transparent;
+}
+
 /* Main play button */
 #playBtn {
-    background: #3b82f6;
+    background: #3363b1ff;
     border-radius: 26px;
     color: #ffffff;
     font-size: 20px;
     font-weight: 600;
 }
 #playBtn:hover {
-    background: #2563eb;
+    background: #2054c4ff;
 }
 #playBtn:pressed {
     background: #1d4ed8;
 }
 #playBtnActive {
-    background: #3b82f6;
+    background: #3363b1ff;
     border-radius: 26px;
     color: #ffffff;
     font-size: 18px;
 }
 #playBtnActive:hover {
-    background: #2563eb;
+    background: #183c8aff;
 }
 
 /* Progress / Volume sliders */
 #progressSlider, #volumeSlider {
     background: transparent;
-    height: 4px;
+    height: 16px;
 }
 #progressSlider::groove:horizontal {
     background: #112347;
-    height: 4px;
-    border-radius: 2px;
+    height: 8px;
+    border-radius: 4px;
 }
 #progressSlider::sub-page:horizontal {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 #2563eb, stop:1 #3b82f6);
-    border-radius: 2px;
+    border-radius: 4px;
 }
 #progressSlider::handle:horizontal {
     background: #ffffff;
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
     margin: -4px 0;
-    border-radius: 6px;
+    border-radius: 8px;
 }
 #progressSlider::handle:horizontal:hover {
     background: #3b82f6;
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
     margin: -5px 0;
 }
 
 #volumeSlider::groove:horizontal {
     background: #112347;
-    height: 4px;
-    border-radius: 2px;
+    height: 8px;
+    border-radius: 4px;
 }
 #volumeSlider::sub-page:horizontal {
     background: #3b82f6;
-    border-radius: 2px;
+    border-radius: 4px;
 }
 #volumeSlider::handle:horizontal {
     background: #ffffff;
-    width: 10px;
-    height: 10px;
-    margin: -3px 0;
-    border-radius: 5px;
+    width: 16px;
+    height: 16px;
+    margin: -4px 0;
+    border-radius: 8px;
 }
 
 /* Time labels */
 #timeLabel {
-    font-size: 11px;
+    font-size: 13px;
     font-family: "Consolas", "SF Mono", monospace;
-    color: #4a608a;
+    color: #e8edf7;
 }
 
 #volIcon {
@@ -691,6 +767,24 @@ QInputDialog {
 QInputDialog QLabel {
     color: #e8edf7;
     font-size: 13px;
+}
+
+QRadioButton {
+    color: #c0ccdd;
+    font-size: 13px;
+    spacing: 8px;
+    background: transparent;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #1a305d;
+    border-radius: 9px;
+    background: #0f2040;
+}
+QRadioButton::indicator:checked {
+    background: #3b82f6;
+    border-color: #3b82f6;
 }
 
 QInputDialog QLineEdit {

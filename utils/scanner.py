@@ -1,264 +1,629 @@
 """
-Metadata Scanner - Scans music folders and extracts song metadata
-Supports: MP3, FLAC, WAV, OGG, M4A, AAC
+Metadata Scanner - Clone Hero song scanner
 """
 
 import os
-import hashlib
-from typing import Optional, Callable
-from PySide6.QtCore import QObject, Signal, QThread, QRunnable, QThreadPool, QMutex
+import re
+import configparser
 
-from utils.database import DatabaseManager, Song
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
-SUPPORTED_FORMATS = {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma", ".opus"}
+from utils.lyrics_scanner import LyricsScanner
+from utils.mid_parser import MidiLyricsScanner
+from core.database import Database
 
+# =========================================================
+# UTILITY
+# =========================================================
 
 def format_duration(seconds: float) -> str:
     """Convert seconds to mm:ss or hh:mm:ss string."""
+
     seconds = int(seconds)
+
     h = seconds // 3600
     m = (seconds % 3600) // 60
     s = seconds % 60
+
     if h > 0:
         return f"{h}:{m:02d}:{s:02d}"
+
     return f"{m}:{s:02d}"
 
 
-def extract_metadata(file_path: str) -> dict:
-    """
-    Extract metadata from an audio file.
-    Returns a dict with title, artist, album, duration, etc.
-    Uses mutagen if available, otherwise falls back to filename parsing.
-    """
-    meta = {
-        "title": os.path.splitext(os.path.basename(file_path))[0],
-        "artist": "Unknown Artist",
-        "album": "Unknown Album",
-        "duration": 0.0,
-        "genre": "",
-        "year": "",
-        "track_number": 0,
-        "cover_art": None,
-        "lyrics": None,
-    }
+# =========================================================
+# CONFIG
+# =========================================================
 
-    try:
-        import mutagen
-        from mutagen.mp3 import MP3
-        from mutagen.flac import FLAC
-        from mutagen.mp4 import MP4
-        from mutagen.oggvorbis import OggVorbis
-        from mutagen.id3 import ID3NoHeaderError
+SUPPORTED_AUDIO = (
+    ".ogg",
+    ".mp3",
+    ".opus",
+    ".wav",
+    ".flac"
+)
 
-        ext = os.path.splitext(file_path)[1].lower()
+SUPPORTED_IMAGE = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp"
+)
 
-        if ext == ".mp3":
-            try:
-                audio = MP3(file_path)
-                meta["duration"] = audio.info.length
-                tags = audio.tags
-                if tags:
-                    meta["title"] = str(tags.get("TIT2", meta["title"]))
-                    meta["artist"] = str(tags.get("TPE1", meta["artist"]))
-                    meta["album"] = str(tags.get("TALB", meta["album"]))
-                    meta["genre"] = str(tags.get("TCON", ""))
-                    meta["year"] = str(tags.get("TDRC", ""))
-                    tn = str(tags.get("TRCK", "0")).split("/")[0]
-                    meta["track_number"] = int(tn) if tn.isdigit() else 0
-                    # Embedded lyrics
-                    for key in tags.keys():
-                        if key.startswith("USLT"):
-                            meta["lyrics"] = tags[key].text
-                            break
-                    # Cover art
-                    for key in tags.keys():
-                        if key.startswith("APIC"):
-                            import base64
-                            meta["cover_art"] = base64.b64encode(tags[key].data).decode()
-                            break
-            except Exception:
-                pass
+CHART_PRIORITY = [
+    "notes.chart",
+    "song.chart"
+]
 
-        elif ext == ".flac":
-            try:
-                audio = FLAC(file_path)
-                meta["duration"] = audio.info.length
-                meta["title"] = audio.get("title", [meta["title"]])[0]
-                meta["artist"] = audio.get("artist", [meta["artist"]])[0]
-                meta["album"] = audio.get("album", [meta["album"]])[0]
-                meta["genre"] = audio.get("genre", [""])[0]
-                meta["year"] = audio.get("date", [""])[0]
-                tn = audio.get("tracknumber", ["0"])[0].split("/")[0]
-                meta["track_number"] = int(tn) if tn.isdigit() else 0
-                meta["lyrics"] = audio.get("lyrics", [None])[0]
-                if audio.pictures:
-                    import base64
-                    meta["cover_art"] = base64.b64encode(audio.pictures[0].data).decode()
-            except Exception:
-                pass
-
-        elif ext in (".m4a", ".aac", ".mp4"):
-            try:
-                audio = MP4(file_path)
-                meta["duration"] = audio.info.length
-                tags = audio.tags or {}
-                meta["title"] = str(tags.get("\xa9nam", [meta["title"]])[0])
-                meta["artist"] = str(tags.get("\xa9ART", [meta["artist"]])[0])
-                meta["album"] = str(tags.get("\xa9alb", [meta["album"]])[0])
-                meta["genre"] = str(tags.get("\xa9gen", [""])[0])
-                meta["year"] = str(tags.get("\xa9day", [""])[0])
-                tn = tags.get("trkn", [(0, 0)])[0]
-                meta["track_number"] = tn[0] if isinstance(tn, tuple) else 0
-                if "covr" in tags:
-                    import base64
-                    meta["cover_art"] = base64.b64encode(bytes(tags["covr"][0])).decode()
-            except Exception:
-                pass
-
-        elif ext == ".ogg":
-            try:
-                audio = OggVorbis(file_path)
-                meta["duration"] = audio.info.length
-                meta["title"] = audio.get("title", [meta["title"]])[0]
-                meta["artist"] = audio.get("artist", [meta["artist"]])[0]
-                meta["album"] = audio.get("album", [meta["album"]])[0]
-                meta["genre"] = audio.get("genre", [""])[0]
-                meta["year"] = audio.get("date", [""])[0]
-            except Exception:
-                pass
-
-        else:
-            # Fallback: try generic mutagen
-            try:
-                audio = mutagen.File(file_path)
-                if audio and hasattr(audio, "info"):
-                    meta["duration"] = audio.info.length
-            except Exception:
-                pass
-
-    except ImportError:
-        # mutagen not installed — try basic duration via wave for WAVs
-        if file_path.endswith(".wav"):
-            try:
-                import wave
-                with wave.open(file_path, "rb") as wf:
-                    frames = wf.getnframes()
-                    rate = wf.getframerate()
-                    meta["duration"] = frames / float(rate)
-            except Exception:
-                pass
-
-    return meta
+ALBUM_ART_PRIORITY = [
+    "album.png",
+    "album.jpg",
+    "album.jpeg"
+]
 
 
-# ─── Scanner Worker ───────────────────────────────────────────────────────────
+# =========================================================
+# DATA MODEL
+# =========================================================
 
-class ScanWorker(QObject):
-    """Runs in a QThread to scan folders without blocking the UI."""
+@dataclass
+class SongPackage:
 
-    progress = Signal(int, int, str)     # current, total, filename
-    song_found = Signal(object)          # Song
-    finished = Signal(int)               # total songs added
-    error = Signal(str)
+    folder_path: str
 
-    def __init__(self, folders: list[str], db: DatabaseManager):
-        super().__init__()
-        self._folders = folders
-        self._db = db
-        self._cancelled = False
+    # Metadata
+    name: str = "Unknown Song"
+    artist: str = "Unknown Artist"
+    album: str = ""
+    charter: str = ""
+    genre: str = ""
+    year: str = ""
 
-    def cancel(self):
-        self._cancelled = True
+    duration_ms: int = 0
 
-    def run(self):
-        all_files = []
-        for folder in self._folders:
-            if not os.path.isdir(folder):
+    # Files
+    song_ini: Optional[str] = None
+    chart_file: Optional[str] = None
+    album_art: Optional[str] = None
+
+    # Audio
+    audio_tracks: Dict[str, str] = field(default_factory=dict)
+    main_audio: Optional[str] = None
+
+    # Lyrics
+    lyrics: str = ""
+
+    # Playlist
+    playlist: str = ""
+    playlist_track: Optional[int] = None
+
+    # Timestamps
+    created_at: int = 0
+
+
+# =========================================================
+# MAIN SCANNER
+# =========================================================
+
+class CHSongScanner:
+
+    def __init__(self, songs_root: str):
+
+        self.songs_root = songs_root
+
+        self._lyrics_scanner = LyricsScanner()
+
+        self.db = Database()
+
+    # =====================================================
+    # PUBLIC
+    # =====================================================
+
+    def scan(self, import_lyrics: bool = True) -> List[SongPackage]:
+
+        song_list = []
+
+        for root, dirs, files in os.walk(self.songs_root):
+
+            # -----------------------------
+            # Detect song folder
+            # -----------------------------
+            if not self._is_song_folder(files):
                 continue
-            for root, _, files in os.walk(folder):
-                for fname in files:
-                    ext = os.path.splitext(fname)[1].lower()
-                    if ext in SUPPORTED_FORMATS:
-                        all_files.append(os.path.join(root, fname))
 
-        total = len(all_files)
-        added = 0
-
-        for i, file_path in enumerate(all_files):
-            if self._cancelled:
-                break
-            self.progress.emit(i + 1, total, os.path.basename(file_path))
+            # -----------------------------
+            # Fast rescan check
+            # -----------------------------
+            if not self.db.needs_rescan(root, import_lyrics=import_lyrics):
+                continue
 
             try:
-                if self._db.song_exists(file_path):
-                    continue
 
-                meta = extract_metadata(file_path)
-                song_id = Song.generate_id(file_path)
-                song = Song(
-                    id=song_id,
-                    file_path=file_path,
-                    title=meta["title"],
-                    artist=meta["artist"],
-                    album=meta["album"],
-                    duration=meta["duration"],
-                    cover_art=meta.get("cover_art"),
-                    lyrics=meta.get("lyrics"),
-                    genre=meta.get("genre", ""),
-                    year=str(meta.get("year", "")),
-                    track_number=meta.get("track_number", 0),
+                song_data = self._scan_song_folder(
+                    root,
+                    files,
+                    import_lyrics=import_lyrics
                 )
-                self._db.add_song(song)
-                self.song_found.emit(song)
-                added += 1
+
+                song_list.append(song_data)
+
             except Exception as e:
-                self.error.emit(f"Error scanning {file_path}: {e}")
 
-        self.finished.emit(added)
+                print(f"[ERROR] Failed scanning: {root}")
+                print(e)
 
+        return song_list
 
-class FolderScanner(QObject):
-    """
-    High-level scanner that manages the scan thread lifecycle.
-    """
+    # =====================================================
+    # SONG FOLDER CHECK
+    # =====================================================
 
-    scan_started = Signal()
-    scan_progress = Signal(int, int, str)
-    song_found = Signal(object)
-    scan_finished = Signal(int)
-    scan_error = Signal(str)
+    def _is_song_folder(self, files: List[str]) -> bool:
 
-    def __init__(self, db: DatabaseManager, parent=None):
-        super().__init__(parent)
-        self._db = db
-        self._thread: Optional[QThread] = None
-        self._worker: Optional[ScanWorker] = None
+        has_ini = any(
+            f.lower() == "song.ini"
+            for f in files
+        )
 
-    def scan_folders(self, folders: list[str]):
-        if self._thread and self._thread.isRunning():
-            self.cancel()
+        has_chart = any(
+            f.lower().endswith(".chart") or
+            f.lower().endswith(".mid")
+            for f in files
+        )
 
-        self._thread = QThread(self)
-        self._worker = ScanWorker(folders, self._db)
-        self._worker.moveToThread(self._thread)
+        has_audio = any(
+            f.lower().endswith(SUPPORTED_AUDIO)
+            for f in files
+        )
 
-        self._thread.started.connect(self._worker.run)
-        self._worker.progress.connect(self.scan_progress)
-        self._worker.song_found.connect(self.song_found)
-        self._worker.finished.connect(self._on_finished)
-        self._worker.error.connect(self.scan_error)
+        return has_ini and has_chart and has_audio
 
-        self.scan_started.emit()
-        self._thread.start()
+    # =====================================================
+    # SCAN SINGLE SONG
+    # =====================================================
 
-    def cancel(self):
-        if self._worker:
-            self._worker.cancel()
-        if self._thread:
-            self._thread.quit()
-            self._thread.wait()
+    def _scan_song_folder(
+        self,
+        folder_path: str,
+        files: List[str],
+        import_lyrics: bool = True
+    ) -> SongPackage:
 
-    def _on_finished(self, count: int):
-        self.scan_finished.emit(count)
-        if self._thread:
-            self._thread.quit()
+        song = SongPackage(
+            folder_path=folder_path
+        )
+
+        # -----------------------------
+        # song.ini
+        # -----------------------------
+        song_ini = self._find_song_ini(
+            folder_path,
+            files
+        )
+
+        if song_ini:
+            self._parse_song_ini(
+                song,
+                song_ini
+            )
+
+        # -----------------------------
+        # chart
+        # -----------------------------
+        song.chart_file = self._find_chart(
+            folder_path,
+            files
+        )
+
+        # -----------------------------
+        # lyrics
+        # -----------------------------
+        if import_lyrics:
+            if (
+                song.chart_file and
+                song.chart_file.lower().endswith(".chart")
+            ):
+
+                song.lyrics = (
+                    self._lyrics_scanner.extract_lyrics(
+                        song.chart_file
+                    )
+                )
+
+            elif (
+                song.chart_file and
+                song.chart_file.lower().endswith(".mid")
+            ):
+
+                song.lyrics = (
+                    MidiLyricsScanner.extract_lyrics(
+                        song.chart_file
+                    )
+                )
+
+        # -----------------------------
+        # album art
+        # -----------------------------
+        song.album_art = self._find_album_art(
+            folder_path,
+            files
+        )
+
+        # -----------------------------
+        # audio tracks
+        # -----------------------------
+        song.audio_tracks = self._detect_audio_tracks(
+            folder_path,
+            files
+        )
+
+        # Main playback audio
+        song.main_audio = (
+            song.audio_tracks.get("song")
+            or next(
+                iter(song.audio_tracks.values()),
+                None
+            )
+        )
+
+        # -----------------------------
+        # fallback name
+        # -----------------------------
+        if song.name == "Unknown Song":
+
+            song.name = os.path.basename(
+                folder_path
+            )
+
+        # -----------------------------
+        # Save database
+        # -----------------------------
+        self._save_to_database(song)
+
+        return song
+
+    # =====================================================
+    # FINDERS
+    # =====================================================
+
+    def _find_song_ini(
+        self,
+        folder_path,
+        files
+    ):
+
+        for file in files:
+
+            if file.lower() == "song.ini":
+
+                return os.path.join(
+                    folder_path,
+                    file
+                )
+
+        return None
+
+    def _find_chart(
+        self,
+        folder_path,
+        files
+    ):
+
+        lower_map = {
+            f.lower(): f
+            for f in files
+        }
+
+        # -----------------------------
+        # Priority search
+        # -----------------------------
+        for priority_name in CHART_PRIORITY:
+
+            if priority_name in lower_map:
+
+                return os.path.join(
+                    folder_path,
+                    lower_map[priority_name]
+                )
+
+        # -----------------------------
+        # Fallback .chart
+        # -----------------------------
+        for file in files:
+
+            if file.lower().endswith(".chart"):
+
+                return os.path.join(
+                    folder_path,
+                    file
+                )
+
+        # -----------------------------
+        # Fallback .mid
+        # -----------------------------
+        for file in files:
+
+            if file.lower().endswith(".mid"):
+
+                return os.path.join(
+                    folder_path,
+                    file
+                )
+
+        return None
+
+    def _find_album_art(
+        self,
+        folder_path,
+        files
+    ):
+
+        lower_map = {
+            f.lower(): f
+            for f in files
+        }
+
+        # -----------------------------
+        # Priority search
+        # -----------------------------
+        for priority_name in ALBUM_ART_PRIORITY:
+
+            if priority_name in lower_map:
+
+                return os.path.join(
+                    folder_path,
+                    lower_map[priority_name]
+                )
+
+        # -----------------------------
+        # Fallback image
+        # -----------------------------
+        for file in files:
+
+            if file.lower().endswith(
+                SUPPORTED_IMAGE
+            ):
+
+                return os.path.join(
+                    folder_path,
+                    file
+                )
+
+        return None
+
+    # =====================================================
+    # PARSE song.ini
+    # =====================================================
+
+    def _parse_song_ini(
+        self,
+        song: SongPackage,
+        ini_path: str
+    ):
+
+        parser = configparser.ConfigParser(
+            strict=False,
+            interpolation=None
+        )
+
+        # -----------------------------
+        # Try multiple encodings
+        # -----------------------------
+        for encoding in (
+            "utf-8-sig",
+            "utf-8",
+            "latin-1"
+        ):
+
+            try:
+
+                parser.read(
+                    ini_path,
+                    encoding=encoding
+                )
+
+                if parser.sections():
+                    break
+
+            except Exception:
+                continue
+
+        # -----------------------------
+        # Find [Song] section
+        # -----------------------------
+        section = None
+
+        for sec_name in parser.sections():
+
+            if sec_name.lower() == "song":
+
+                section = parser[sec_name]
+                break
+
+        if section is None:
+            return
+
+        try:
+
+            song.song_ini = ini_path
+
+            song.name = self._strip_tags(
+                section.get(
+                    "name",
+                    song.name
+                )
+            )
+
+            song.artist = self._strip_tags(
+                section.get(
+                    "artist",
+                    song.artist
+                )
+            )
+
+            song.album = self._strip_tags(
+                section.get(
+                    "album",
+                    ""
+                )
+            )
+
+            song.charter = self._strip_tags(
+                section.get(
+                    "charter",
+                    ""
+                )
+            )
+
+            song.genre = self._strip_tags(
+                section.get(
+                    "genre",
+                    ""
+                )
+            )
+
+            song.year = self._strip_tags(
+                section.get(
+                    "year",
+                    ""
+                )
+            )
+
+            song.playlist = self._strip_tags(
+                section.get(
+                    "playlist",
+                    ""
+                )
+            )
+
+            try:
+                track_str = section.get("playlist_track", "")
+                if track_str:
+                    song.playlist_track = int(track_str)
+            except ValueError:
+                song.playlist_track = None
+
+            # song_length in milliseconds
+            try:
+
+                song.duration_ms = int(
+                    section.get(
+                        "song_length",
+                        "0"
+                    )
+                )
+
+            except ValueError:
+
+                song.duration_ms = 0
+
+        except Exception as e:
+
+            print(
+                f"[WARNING] Failed parsing INI: {ini_path}"
+            )
+
+            print(e)
+
+    # =====================================================
+    # TAG STRIPPING
+    # =====================================================
+
+    _TAG_RE = re.compile(r"<[^>]+>")
+
+    @staticmethod
+    def _strip_tags(value: str) -> str:
+
+        return CHSongScanner._TAG_RE.sub(
+            "",
+            value
+        ).strip()
+
+    # =====================================================
+    # AUDIO DETECTOR
+    # =====================================================
+
+    def _detect_audio_tracks(
+        self,
+        folder_path,
+        files
+    ):
+
+        tracks = {}
+
+        # -----------------------------
+        # Official/valid stem names
+        # -----------------------------
+        VALID_TRACKS = {
+            "song",
+            "guitar",
+            "bass",
+            "drums",
+            "drums_1",
+            "drums_2",
+            "drums_3",
+            "drums_4",
+            "vocals",
+            "keys",
+            "rhythm",
+            "crowd",
+        }
+
+        for file in files:
+
+            lower = file.lower()
+
+            # -----------------------------
+            # Audio extension check
+            # -----------------------------
+            if not lower.endswith(
+                SUPPORTED_AUDIO
+            ):
+                continue
+
+            # filename without extension
+            name = os.path.splitext(lower)[0]
+
+            # -----------------------------
+            # Filter invalid stems
+            # -----------------------------
+            if name not in VALID_TRACKS:
+                continue
+
+            tracks[name] = os.path.join(
+                folder_path,
+                file
+            )
+
+        return tracks
+
+    # =====================================================
+    # DATABASE
+    # =====================================================
+
+    def _save_to_database(
+        self,
+        song: SongPackage
+    ):
+
+        # Save/update song
+        song_id = self.db.upsert_song(song)
+
+        # Handle playlist assignment
+        if song.playlist:
+            playlist = self.db.get_playlist_by_name(song.playlist)
+            if playlist:
+                playlist_id = playlist["id"]
+            else:
+                playlist_id = self.db.create_playlist(song.playlist)
+
+            self.db.add_song_to_playlist(
+                playlist_id,
+                song_id,
+                position=song.playlist_track
+            )
+
+        # Future:
+        # save sections here
+        # self.db.replace_sections(song_id, sections_data)

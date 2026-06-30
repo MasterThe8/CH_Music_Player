@@ -1,279 +1,357 @@
-"""
-Audio Engine - Handles all playback logic using PySide6 multimedia
-"""
+import threading
+import numpy as np
+import soundfile as sf
+import sounddevice as sd
 
-import os
-import random
-from typing import Optional
-from PySide6.QtCore import QObject, Signal, Slot, QTimer, QUrl
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-
-from utils.database import DatabaseManager, Song
+from PySide6.QtCore import QObject, Signal, QTimer
 
 
 class AudioEngine(QObject):
-    """
-    Core playback engine. Wraps QMediaPlayer and exposes clean signals/slots.
-    """
 
-    # Signals
-    song_changed = Signal(object)           # Song | None
-    playback_state_changed = Signal(str)    # "playing" | "paused" | "stopped"
-    position_changed = Signal(float)        # seconds
-    duration_changed = Signal(float)        # seconds
-    volume_changed = Signal(float)          # 0.0 – 1.0
-    queue_changed = Signal(list)            # list[Song]
-    shuffle_changed = Signal(bool)
-    repeat_changed = Signal(str)            # "none" | "one" | "all"
-    error_occurred = Signal(str)
+    # =====================================================
+    # SIGNALS  (same contract as the VLC version)
+    # =====================================================
 
-    def __init__(self, db: DatabaseManager, parent=None):
-        super().__init__(parent)
-        self.db = db
+    position_changed = Signal(int)   # milliseconds
 
-        # Media player
-        self._player = QMediaPlayer(self)
-        self._audio_output = QAudioOutput(self)
-        self._player.setAudioOutput(self._audio_output)
+    playback_started = Signal()
+    playback_paused  = Signal()
+    playback_stopped = Signal()
 
-        # State
-        self._queue: list[Song] = []
-        self._original_queue: list[Song] = []
-        self._current_index: int = -1
-        self._current_song: Optional[Song] = None
-        self._shuffle: bool = False
-        self._repeat: str = "none"
-        self._volume: float = 0.7
+    song_finished = Signal()
 
-        # Connect player signals
-        self._player.playbackStateChanged.connect(self._on_playback_state_changed)
-        self._player.positionChanged.connect(self._on_position_changed)
-        self._player.durationChanged.connect(self._on_duration_changed)
-        self._player.errorOccurred.connect(self._on_error)
-        self._player.mediaStatusChanged.connect(self._on_media_status_changed)
+    # =====================================================
+    # INIT
+    # =====================================================
 
-        # Restore settings
-        settings = db.get_settings()
-        self.set_volume(settings.volume)
-        self.set_shuffle(settings.shuffle)
-        self.set_repeat(settings.repeat_mode)
+    def __init__(self):
+        super().__init__()
 
-    # ── Public API ────────────────────────────────────────────────────────────
+        # stem_name -> np.ndarray  (float32, shape: [frames, channels])
+        self._stems:       dict[str, np.ndarray] = {}
 
-    def load_songs(self, songs: list[Song], start_index: int = 0):
-        """Load a list of songs into the queue and optionally start playing."""
-        self._original_queue = list(songs)
-        self._queue = list(songs)
-        if self._shuffle:
-            self._apply_shuffle(start_index)
-        self.queue_changed.emit(self._queue)
-        if songs:
-            self._play_index(start_index)
+        # stem_name -> float  (0.0 – 1.0)
+        self._stem_volumes: dict[str, float]     = {}
 
-    def play_song(self, song: Song, queue: Optional[list[Song]] = None):
-        """Play a specific song. Optionally update the queue."""
-        if queue is not None:
-            self._original_queue = list(queue)
-            self._queue = list(queue)
-            if self._shuffle:
-                self._apply_shuffle(queue.index(song) if song in queue else 0)
-            self.queue_changed.emit(self._queue)
+        # Shared sample-rate (all stems must match after resampling)
+        self._samplerate: int  = 44100
+
+        self.duration_ms: int  = 0
+        self.is_loaded:   bool = False
+        self.is_paused:   bool = False
+
+        # Current read head in *frames*
+        self._position:   int  = 0
+
+        # Master volume  0.0 – 1.0
+        self._master_vol: float = 0.7
+
+        # Guards
+        self._is_seeking:  bool = False
+        self._is_playing:  bool = False
+        self._reached_end: bool = False
+
+        # Thread-safety
+        self._lock = threading.Lock()
+
+        # sounddevice stream (opened once, kept alive)
+        self._stream: sd.OutputStream | None = None
+
+        # Qt timer for position polling → position_changed signal
+        self._timer = QTimer()
+        self._timer.setInterval(50)
+        self._timer.timeout.connect(self._emit_position)
+
+    # =====================================================
+    # LOAD
+    # =====================================================
+
+    def load(self, audio_tracks: dict[str, str]) -> bool:
+        """
+        audio_tracks: { stem_name: file_path, ... }
+        All stems are loaded into RAM as float32 arrays.
+        """
+        self.stop()
+        self._close_stream()
+
+        self._stems.clear()
+        self._stem_volumes.clear()
+        self.is_loaded = False
+        self.duration_ms = 0
+        self._position = 0
+        self._reached_end = False
+
+        if not audio_tracks:
+            return False
+
         try:
-            idx = self._queue.index(song)
-        except ValueError:
-            self._queue.append(song)
-            idx = len(self._queue) - 1
-            self.queue_changed.emit(self._queue)
-        self._play_index(idx)
+            max_frames  = 0
+            samplerate  = None
+
+            for stem_name, path in audio_tracks.items():
+                data, sr = sf.read(path, dtype="float32", always_2d=True)
+
+                if samplerate is None:
+                    samplerate = sr
+                elif sr != samplerate:
+                    # Simple drop/repeat resampling (good enough for same-project stems)
+                    ratio  = samplerate / sr
+                    n_out  = int(len(data) * ratio)
+                    xs_old = np.linspace(0, len(data) - 1, len(data))
+                    xs_new = np.linspace(0, len(data) - 1, n_out)
+                    data   = np.column_stack([
+                        np.interp(xs_new, xs_old, data[:, ch])
+                        for ch in range(data.shape[1])
+                    ]).astype(np.float32)
+
+                self._stems[stem_name]       = data
+                self._stem_volumes[stem_name] = 1.0
+                max_frames = max(max_frames, len(data))
+
+            if not self._stems:
+                return False
+
+            self._samplerate = samplerate or 44100
+            self.duration_ms = int(max_frames / self._samplerate * 1000)
+            self.is_loaded   = True
+
+            self._open_stream()
+            return True
+
+        except Exception as e:
+            print(f"[AudioEngine] Load error: {e}")
+            return False
+
+    # =====================================================
+    # STREAM
+    # =====================================================
+
+    def _open_stream(self):
+        """Open a sounddevice OutputStream."""
+        # All stems mixed to stereo
+        self._stream = sd.OutputStream(
+            samplerate = self._samplerate,
+            channels   = 2,
+            dtype      = "float32",
+            blocksize  = 1024,
+            callback   = self._audio_callback,
+            finished_callback = self._stream_finished,
+        )
+
+    def _close_stream(self):
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
+
+    def _audio_callback(self, outdata, frames, time_info, status):
+        with self._lock:
+            if not self._is_playing or not self._stems:
+                outdata[:] = 0
+                return
+
+            pos   = self._position
+            mixed = np.zeros((frames, 2), dtype=np.float32)
+
+            for stem_name, data in self._stems.items():
+                vol   = self._stem_volumes.get(stem_name, 1.0) * self._master_vol
+                end   = min(pos + frames, len(data))
+                chunk = data[pos:end]
+
+                if chunk.shape[1] == 1:
+                    chunk = np.repeat(chunk, 2, axis=1)
+                elif chunk.shape[1] > 2:
+                    chunk = chunk[:, :2]
+
+                n = len(chunk)
+                if n > 0:
+                    mixed[:n] += chunk * vol
+
+            # Soft clip to prevent distortion when stems stack
+            np.clip(mixed, -1.0, 1.0, out=mixed)
+            outdata[:] = mixed
+
+            # Advance read head
+            max_len = max(len(d) for d in self._stems.values())
+            self._position = min(pos + frames, max_len)
+
+            # Signal end-of-file (handled in _emit_position via flag)
+            if self._position >= max_len:
+                self._is_playing = False
+                self._reached_end = True
+
+    def _stream_finished(self):
+        pass
+
+    # =====================================================
+    # PLAYBACK
+    # =====================================================
 
     def play(self):
-        self._player.play()
+        if not self.is_loaded:
+            return
+
+        with self._lock:
+            self._is_playing = True
+            self._reached_end = False
+
+        if self._stream is None:
+            self._open_stream()
+
+        if not self._stream.active:
+            self._stream.start()
+
+        self.is_paused = False
+        self._timer.start()
+        self.playback_started.emit()
 
     def pause(self):
-        self._player.pause()
+        if not self.is_loaded:
+            return
 
-    def toggle_play_pause(self):
-        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.pause()
-        else:
-            self.play()
+        with self._lock:
+            self._is_playing = False
+
+        self.is_paused = True
+        self._timer.stop()
+        self.playback_paused.emit()
+
+    def resume(self):
+        if not self.is_loaded:
+            return
+
+        with self._lock:
+            self._is_playing = True
+
+        if self._stream and not self._stream.active:
+            self._stream.start()
+
+        self.is_paused = False
+        self._timer.start()
+        self.playback_started.emit()
 
     def stop(self):
-        self._player.stop()
-        self._current_song = None
-        self.song_changed.emit(None)
-        self.playback_state_changed.emit("stopped")
+        with self._lock:
+            self._is_playing = False
+            self._position   = 0
+            self._reached_end = False
 
-    def next(self):
-        if not self._queue:
-            return
-        if self._repeat == "one":
-            self._play_index(self._current_index)
-            return
-        next_idx = self._current_index + 1
-        if next_idx >= len(self._queue):
-            if self._repeat == "all":
-                next_idx = 0
-            else:
-                self.stop()
-                return
-        self._play_index(next_idx)
+        if self._stream and self._stream.active:
+            self._stream.stop()
 
-    def previous(self):
-        if not self._queue:
-            return
-        # If more than 3s played, restart current song
-        if self._player.position() > 3000:
-            self.seek(0)
-            return
-        prev_idx = self._current_index - 1
-        if prev_idx < 0:
-            if self._repeat == "all":
-                prev_idx = len(self._queue) - 1
-            else:
-                prev_idx = 0
-        self._play_index(prev_idx)
+        self._timer.stop()
+        self.is_paused = False
+        self.playback_stopped.emit()
 
-    def seek(self, position_seconds: float):
-        self._player.setPosition(int(position_seconds * 1000))
+    def toggle_playback(self):
+        if self.is_paused:
+            self.resume()
+        else:
+            self.pause()
 
-    def set_volume(self, volume: float):
-        """Set volume 0.0 to 1.0"""
+    # =====================================================
+    # SEEK  — frame-accurate, zero drift
+    # =====================================================
+
+    def seek(self, seconds: float):
+        if not self.is_loaded:
+            return
+
+        self._is_seeking  = True
+        was_playing = self._is_playing
+
+        # Pause audio thread while we move the read head
+        with self._lock:
+            self._is_playing = False
+
+        target_frame = int(max(0.0, seconds) * self._samplerate)
+        max_frames   = max(len(d) for d in self._stems.values())
+        target_frame = min(target_frame, max_frames - 1)
+
+        with self._lock:
+            self._position   = target_frame
+            self._is_playing = was_playing
+            self._reached_end = False
+
+        target_ms = int(target_frame / self._samplerate * 1000)
+        self.position_changed.emit(target_ms)
+
+        self._is_seeking = False
+
+        # If stream stopped at end-of-file, restart it
+        if was_playing and self._stream and not self._stream.active:
+            self._stream.start()
+
+        if not self.is_paused:
+            self._timer.start()
+
+    # =====================================================
+    # STEM VOLUME
+    # =====================================================
+
+    def set_stem_volume(self, stem_name: str, volume: float):
+        """volume: 0.0 – 1.0  (or 0 – 100, auto-detected)"""
+        if volume > 1.0:
+            volume = volume / 100.0
         volume = max(0.0, min(1.0, volume))
-        self._volume = volume
-        self._audio_output.setVolume(volume)
-        self.volume_changed.emit(volume)
-        self.db.update_setting("volume", volume)
+        self._stem_volumes[stem_name] = volume
 
-    def set_shuffle(self, enabled: bool):
-        self._shuffle = enabled
-        if enabled and self._queue:
-            self._apply_shuffle(self._current_index)
-        elif not enabled:
-            current = self._current_song
-            self._queue = list(self._original_queue)
-            if current and current in self._queue:
-                self._current_index = self._queue.index(current)
-            self.queue_changed.emit(self._queue)
-        self.shuffle_changed.emit(enabled)
-        self.db.update_setting("shuffle", enabled)
+    def mute_stem(self, stem_name: str):
+        self.set_stem_volume(stem_name, 0.0)
 
-    def set_repeat(self, mode: str):
-        """mode: 'none' | 'one' | 'all'"""
-        self._repeat = mode
-        self.repeat_changed.emit(mode)
-        self.db.update_setting("repeat_mode", mode)
+    def unmute_stem(self, stem_name: str):
+        self.set_stem_volume(stem_name, 1.0)
 
-    def cycle_repeat(self):
-        modes = ["none", "all", "one"]
-        idx = modes.index(self._repeat)
-        self.set_repeat(modes[(idx + 1) % len(modes)])
+    # =====================================================
+    # MASTER VOLUME
+    # =====================================================
 
-    def add_to_queue(self, song: Song):
-        self._queue.append(song)
-        self._original_queue.append(song)
-        self.queue_changed.emit(self._queue)
+    def set_master_volume(self, volume: float):
+        """volume: 0 – 100"""
+        self._master_vol = max(0.0, min(1.0, volume / 100.0))
 
-    def remove_from_queue(self, index: int):
-        if 0 <= index < len(self._queue):
-            self._queue.pop(index)
-            if index < self._current_index:
-                self._current_index -= 1
-            self.queue_changed.emit(self._queue)
+    # =====================================================
+    # GETTERS
+    # =====================================================
 
-    def move_in_queue(self, from_idx: int, to_idx: int):
-        if 0 <= from_idx < len(self._queue) and 0 <= to_idx < len(self._queue):
-            song = self._queue.pop(from_idx)
-            self._queue.insert(to_idx, song)
-            if from_idx == self._current_index:
-                self._current_index = to_idx
-            self.queue_changed.emit(self._queue)
-
-    # ── Properties ────────────────────────────────────────────────────────────
-
-    @property
-    def current_song(self) -> Optional[Song]:
-        return self._current_song
-
-    @property
     def is_playing(self) -> bool:
-        return self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        return self._is_playing
 
-    @property
-    def position(self) -> float:
-        return self._player.position() / 1000.0
+    def get_position(self) -> int:
+        """Current position in milliseconds."""
+        return int(self._position / self._samplerate * 1000)
 
-    @property
-    def duration(self) -> float:
-        return self._player.duration() / 1000.0
+    def get_duration(self) -> int:
+        return self.duration_ms
 
-    @property
-    def volume(self) -> float:
-        return self._volume
+    def get_loaded_stems(self) -> list[str]:
+        return list(self._stems.keys())
 
-    @property
-    def shuffle(self) -> bool:
-        return self._shuffle
+    # =====================================================
+    # INTERNAL
+    # =====================================================
 
-    @property
-    def repeat(self) -> str:
-        return self._repeat
+    def _emit_position(self):
+        pos_ms = self.get_position()
+        self.position_changed.emit(pos_ms)
 
-    @property
-    def queue(self) -> list[Song]:
-        return list(self._queue)
-
-    @property
-    def current_index(self) -> int:
-        return self._current_index
-
-    # ── Internal ──────────────────────────────────────────────────────────────
-
-    def _play_index(self, index: int):
-        if not self._queue or index < 0 or index >= len(self._queue):
+        if self._reached_end:
+            self._reached_end = False
+            self._timer.stop()
+            self.song_finished.emit()
             return
-        self._current_index = index
-        self._current_song = self._queue[index]
 
-        url = QUrl.fromLocalFile(self._current_song.file_path)
-        self._player.setSource(url)
-        self._player.play()
+        if not self._is_playing and not self.is_paused:
+            self._timer.stop()
 
-        self.song_changed.emit(self._current_song)
-        self.db.increment_play_count(self._current_song.id)
-        self.db.add_to_history(self._current_song.id)
-        self.db.update_setting("last_song_id", self._current_song.id)
+    # =====================================================
+    # CLEANUP
+    # =====================================================
 
-    def _apply_shuffle(self, current_index: int = 0):
-        if not self._queue:
-            return
-        current = self._queue[current_index] if 0 <= current_index < len(self._queue) else None
-        rest = [s for s in self._queue if s != current]
-        random.shuffle(rest)
-        self._queue = ([current] + rest) if current else rest
-        self._current_index = 0
-        self.queue_changed.emit(self._queue)
-
-    # ── Qt Slots ──────────────────────────────────────────────────────────────
-
-    def _on_playback_state_changed(self, state):
-        state_map = {
-            QMediaPlayer.PlaybackState.PlayingState: "playing",
-            QMediaPlayer.PlaybackState.PausedState: "paused",
-            QMediaPlayer.PlaybackState.StoppedState: "stopped",
-        }
-        self.playback_state_changed.emit(state_map.get(state, "stopped"))
-
-    def _on_position_changed(self, position_ms: int):
-        self.position_changed.emit(position_ms / 1000.0)
-        self.db.update_setting("last_position", position_ms / 1000.0)
-
-    def _on_duration_changed(self, duration_ms: int):
-        self.duration_changed.emit(duration_ms / 1000.0)
-
-    def _on_error(self, error, error_string: str):
-        self.error_occurred.emit(f"Playback error: {error_string}")
-
-    def _on_media_status_changed(self, status):
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.next()
+    def cleanup(self):
+        self.stop()
+        self._close_stream()
+        self._stems.clear()
