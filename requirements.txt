@@ -1,11 +1,4 @@
-# Lumina Music Player — Dependencies
-# ────────────────────────────────────
-# Core (required)
-PySide6>=6.6.0
-
-# Recommended: audio metadata extraction
-# Supports MP3, FLAC, OGG, M4A/AAC, WMA, OPUS
-mutagen>=1.47.0
-
-# Optional: better MP3 duration detection (very lightweight)
-# tinytag>=1.10.0
+PySide6
+mutagen
+python-vlc
+mido
