@@ -14,6 +14,10 @@ CH MP (Clone Hero Music Player) is a desktop music player built with **Python** 
 * 🎨 Modern Qt stylesheet interface
 * 💾 Automatically save library information
 
+## Screenshot
+
+![CH MP Screenshot](docs/screenshot.png)
+
 ## Project Structure
 
 ```text
@@ -46,43 +50,8 @@ Main libraries used by this project:
 * mutagen
 * python-vlc
 
-Additional dependencies may be required depending on future features.
-
 ## Running the Application
 
 ```bash
 python main.py
 ```
-
-## Supported Files
-
-Audio:
-
-* MP3
-* OGG
-* FLAC
-* WAV
-* Other formats supported by VLC
-
-Lyrics:
-
-* MIDI (.mid)
-
-Clone Hero:
-
-* Clone Hero song folders
-* notes.mid
-* song.ini (when available)
-
-## Screenshots
-
-Screenshots can be added here.
-
-```
-docs/screenshot-main.png
-docs/screenshot-player.png
-```
-
-## License
-
-This project is intended for personal and educational purposes unless stated otherwise.
